@@ -1214,3 +1214,123 @@ HTTP 401
 ```
 
 Conclusion: the Part 6 final project is deployed publicly on Railway and the deployment requirement is complete.
+## Discussion Questions
+
+### Part 1 - Localhost vs Production
+
+#### 1. What happens if you push code with a hardcoded API key to a public GitHub repository?
+
+If an API key is hardcoded and pushed to a public repository, anyone can copy and use it. This can lead to unauthorized API usage, unexpected billing, data exposure, abuse of the service, and account suspension.
+
+The correct response is to revoke the leaked key immediately, create a new key, move secrets into environment variables or a secret manager, and check git history because deleting the key from the latest commit is not enough if it still exists in previous commits.
+
+#### 2. Why is stateless important when scaling?
+
+Stateless design is important because multiple instances can handle requests independently. If state is stored only in one instance's memory, a later request routed to another instance may lose session history or user context.
+
+With stateless app instances, shared state is moved to Redis, a database, or another external store. This allows horizontal scaling, load balancing, rolling deploys, and container restarts without losing user data.
+
+#### 3. What does 12-factor "dev/prod parity" mean in practice?
+
+Dev/prod parity means the development, staging, and production environments should be as similar as possible. The same app should use similar dependencies, configuration style, backing services, and startup commands across environments.
+
+In practice, this means using environment variables for config, Docker for consistent runtime, the same FastAPI app structure locally and in production, and similar health checks/logging behavior. This reduces bugs that only appear after deployment.
+
+### Part 2 - Docker
+
+#### 1. Why copy `requirements.txt` and run `pip install` before `COPY . .`?
+
+Docker builds images layer by layer and caches unchanged layers. `requirements.txt` changes less often than application code, so copying it first lets Docker cache the dependency installation layer.
+
+If the Dockerfile copies all source code before installing dependencies, every code change invalidates the cache and forces `pip install` to run again. That makes builds slower.
+
+#### 2. What should `.dockerignore` contain, and why are `venv/` and `.env` important?
+
+`.dockerignore` should exclude files that are not needed inside the image, such as:
+
+- `.git/`
+- `.env` and `.env.*`
+- `venv/` and `.venv/`
+- `__pycache__/`
+- `*.pyc`
+- local logs, test caches, and editor files
+
+`venv/` is important because virtual environments are large and platform-specific; dependencies should be installed inside the image instead. `.env` is important because it may contain secrets such as API keys, JWT secrets, database URLs, or cloud credentials.
+
+#### 3. If the agent needs to read files from disk, how do you mount a volume into the container?
+
+Use a Docker bind mount or named volume.
+
+Example with `docker run`:
+
+```powershell
+docker run -p 8000:8000 -v D:\AI20k\data:/app/data my-agent:latest
+```
+
+Example with Docker Compose:
+
+```yaml
+services:
+  agent:
+    volumes:
+      - ./data:/app/data
+```
+
+The app can then read files from `/app/data` inside the container while the real files live on the host machine.
+
+### Part 3 - Cloud Deployment
+
+#### 1. Why is serverless, such as Lambda, not always good for an AI agent?
+
+Serverless is useful for short stateless tasks, but AI agents often need longer request time, streaming responses, warm model clients, background work, vector database connections, and predictable latency.
+
+Serverless platforms may have cold starts, execution time limits, memory limits, connection limits, and less control over long-running processes. For many AI agents, container platforms such as Railway, Render, or Cloud Run are easier and more reliable.
+
+#### 2. What is a cold start, and how does it affect UX?
+
+A cold start happens when the platform starts a new instance from zero before serving a request. The app must boot, load dependencies, initialize clients, and become ready before it can respond.
+
+For users, this means the first request can be slow or may time out. In AI apps, cold starts feel especially bad because the LLM call already adds latency. Keeping minimum instances warm or using health checks and readiness probes can reduce the impact.
+
+#### 3. When should you upgrade from Railway to Cloud Run?
+
+Railway is good for quick deployment, demos, small products, and learning because it is simple and fast. Cloud Run is a better fit when the project needs more production control.
+
+Upgrade to Cloud Run when you need stronger IAM/security integration, VPC networking, detailed autoscaling control, regional deployment strategy, CI/CD through Google Cloud Build or GitHub Actions, better observability, or tighter integration with other GCP services.
+
+### Part 4 - API Gateway & Security
+
+#### 1. When should you use API Key vs JWT vs OAuth2?
+
+API keys are best for simple server-to-server access, internal tools, demos, and cases where one key represents one client or service.
+
+JWT is better when users log in and the API needs to know identity, role, expiration time, and claims without checking a database on every request.
+
+OAuth2 is best when users authorize third-party applications or when the system needs standard login/authorization flows with providers such as Google, GitHub, Microsoft, or an enterprise identity provider.
+
+#### 2. How many requests per minute should an AI agent allow?
+
+There is no single correct number. The limit depends on model cost, latency, user plan, infrastructure capacity, and abuse risk.
+
+A reasonable demo limit is 10 to 20 requests per minute per user. A production app can use tiered limits, for example:
+
+- Free users: 5-20 requests/minute
+- Paid users: 60-300 requests/minute
+- Admin/internal services: higher limits
+
+The limit should be paired with cost guard because AI requests can be expensive even if request count is not high.
+
+#### 3. If an API key is leaked, how do you detect and handle it?
+
+Detection methods include monitoring unusual traffic spikes, high error rates, unexpected geographic access, abnormal cost increase, and logs showing unknown clients using the key.
+
+Response steps:
+
+1. Revoke or rotate the leaked key immediately.
+2. Create a new key and update trusted clients.
+3. Check logs to estimate impact and abuse window.
+4. Reduce blast radius with per-key rate limits and budgets.
+5. Remove the secret from code, `.env` files, screenshots, and git history if needed.
+6. Add alerting for future spikes in traffic or cost.
+
+Conclusion: the discussion questions for Parts 1-4 are complete.
